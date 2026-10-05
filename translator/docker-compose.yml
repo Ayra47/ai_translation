@@ -1,0 +1,49 @@
+services:
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: libretranslate
+    restart: unless-stopped
+    user: root
+    ports:
+      - "5001:5001"
+    environment:
+      - LT_LOAD_ONLY=en,ru,zh,fr,de,es,ar,ja,ko,pt,hi,tr,vi,uk,pl,it
+      - LT_DISABLE_WEB_UI=false
+      - HOME=/root
+      - LT_PORT=5001
+    volumes:
+      - lt_data:/root/.local/share
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/languages"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  backend:
+    build: ./backend
+    container_name: whisper-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - LIBRETRANSLATE_URL=http://libretranslate:5001
+      - WHISPER_MODEL=base
+    volumes:
+      - whisper_cache:/root/.cache/huggingface
+    depends_on:
+      libretranslate:
+        condition: service_healthy
+
+  frontend:
+    image: nginx:alpine
+    container_name: translator-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+
+volumes:
+  lt_data:
+  whisper_cache:

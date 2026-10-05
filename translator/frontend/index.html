@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local Speech Translator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f0f2f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+  .card {
+    background: white;
+    border-radius: 18px;
+    padding: 2rem 2rem 1.5rem;
+    max-width: 580px;
+    width: 100%;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.09);
+  }
+  .header { margin-bottom: 1.5rem; }
+  .header h1 { font-size: 20px; font-weight: 600; color: #111; }
+  .header p { font-size: 13px; color: #999; margin-top: 3px; }
+  .api-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 1.25rem;
+  }
+  .api-row input {
+    flex: 1; padding: 8px 12px; border: 1px solid #e0e0e0;
+    border-radius: 8px; font-size: 13px; color: #333;
+  }
+  .api-row button {
+    padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 8px;
+    font-size: 13px; cursor: pointer; background: white; color: #555;
+    transition: background 0.15s;
+  }
+  .api-row button:hover { background: #f5f5f5; }
+  .api-status { font-size: 12px; margin-top: -10px; margin-bottom: 1rem; }
+  .api-status.ok { color: #22c55e; }
+  .api-status.err { color: #ef4444; }
+
+  .mic-wrap { text-align: center; margin: 0.5rem 0 1.25rem; }
+  .mic-btn {
+    width: 80px; height: 80px; border-radius: 50%;
+    border: none; cursor: pointer;
+    background: #4f46e5; color: white;
+    font-size: 30px; transition: all 0.2s;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .mic-btn:hover { background: #4338ca; transform: scale(1.04); }
+  .mic-btn.recording { background: #ef4444; animation: pulse 1.2s infinite; }
+  .mic-btn:disabled { background: #d1d5db; cursor: not-allowed; transform: none; animation: none; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.35); }
+    50%      { box-shadow: 0 0 0 14px rgba(239,68,68,0); }
+  }
+  .status-label {
+    font-size: 13px; color: #9ca3af; margin-top: 10px;
+    min-height: 18px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .spinner {
+    width: 13px; height: 13px; border: 2px solid #e5e7eb;
+    border-top-color: #4f46e5; border-radius: 50%;
+    animation: spin 0.7s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .box {
+    border: 1px solid #f0f0f0; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 12px; min-height: 90px;
+    position: relative;
+  }
+  .box-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; color: #bbb; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .badge {
+    font-size: 11px; font-weight: 500; padding: 2px 8px;
+    border-radius: 20px; background: #ede9fe; color: #6d28d9;
+    letter-spacing: 0; text-transform: none;
+  }
+  .box-text { font-size: 15px; color: #111; line-height: 1.65; }
+  .box-text.muted { color: #ccc; font-style: italic; }
+
+  .error-msg { color: #ef4444; font-size: 13px; text-align: center; min-height: 18px; margin-bottom: 8px; }
+  .hint { font-size: 12px; color: #d1d5db; text-align: center; padding-top: 0.5rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>🌐 Local Speech Translator</h1>
+    <p>Powered by Whisper + LibreTranslate &mdash; fully local, no cloud</p>
+  </div>
+
+  <div class="api-row">
+    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="Backend URL" />
+    <button onclick="checkHealth()">Check</button>
+  </div>
+  <div class="api-status" id="apiStatus"></div>
+
+  <div class="mic-wrap">
+    <button class="mic-btn" id="micBtn" disabled title="Click to record">🎙️</button>
+    <div class="status-label">
+      <div class="spinner" id="spinner"></div>
+      <span id="statusText">Connect to backend first</span>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="box-label">
+      Original speech
+      <span class="badge" id="langBadge" style="display:none"></span>
+    </div>
+    <div class="box-text muted" id="originalText">Speech will appear here...</div>
+  </div>
+
+  <div class="box">
+    <div class="box-label">English translation</div>
+    <div class="box-text muted" id="translationText">Translation will appear here...</div>
+  </div>
+
+  <div class="error-msg" id="errorMsg"></div>
+  <div class="hint">Record → Whisper detects language → LibreTranslate converts to English</div>
+</div>
+
+<script>
+let mediaRecorder, audioChunks = [], isRecording = false;
+let backendUrl = 'http://localhost:8000';
+
+const micBtn = document.getElementById('micBtn');
+const spinner = document.getElementById('spinner');
+const statusText = document.getElementById('statusText');
+const originalText = document.getElementById('originalText');
+const translationText = document.getElementById('translationText');
+const langBadge = document.getElementById('langBadge');
+const errorMsg = document.getElementById('errorMsg');
+const apiStatus = document.getElementById('apiStatus');
+
+async function checkHealth() {
+  backendUrl = document.getElementById('apiUrl').value.replace(/\/$/, '');
+  apiStatus.className = 'api-status';
+  apiStatus.textContent = 'Checking...';
+  try {
+    const r = await fetch(`${backendUrl}/health`, { signal: AbortSignal.timeout(5000) });
+    if (r.ok) {
+      const d = await r.json();
+      apiStatus.className = 'api-status ok';
+      apiStatus.textContent = `✓ Connected — Whisper model: ${d.model}`;
+      micBtn.disabled = false;
+      statusText.textContent = 'Click to start recording';
+    } else throw new Error(r.status);
+  } catch (e) {
+    apiStatus.className = 'api-status err';
+    apiStatus.textContent = `✗ Cannot reach backend at ${backendUrl}`;
+    micBtn.disabled = true;
+    statusText.textContent = 'Connect to backend first';
+  }
+}
+
+micBtn.addEventListener('click', async () => {
+  if (isRecording) {
+    mediaRecorder.stop();
+    return;
+  }
+  errorMsg.textContent = '';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      await sendAudio(blob);
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    micBtn.classList.add('recording');
+    micBtn.textContent = '⏹️';
+    statusText.textContent = 'Recording... click to stop';
+  } catch (e) {
+    errorMsg.textContent = 'Microphone access denied.';
+  }
+});
+
+async function sendAudio(blob) {
+  isRecording = false;
+  micBtn.classList.remove('recording');
+  micBtn.textContent = '🎙️';
+  spinner.style.display = 'block';
+  statusText.textContent = 'Transcribing...';
+
+  const form = new FormData();
+  form.append('audio', blob, 'recording.webm');
+
+  try {
+    const r = await fetch(`${backendUrl}/transcribe`, { method: 'POST', body: form });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+
+    originalText.className = 'box-text';
+    originalText.textContent = d.original || '(no speech detected)';
+
+    translationText.className = 'box-text';
+    translationText.textContent = d.translation || d.original || '';
+
+    if (d.detectedLanguageName) {
+      langBadge.style.display = 'inline';
+      langBadge.textContent = `${d.detectedLanguageName} (${d.confidence}%)`;
+    }
+
+    if (d.translationError) {
+      errorMsg.textContent = `Translation error: ${d.translationError}`;
+    }
+    statusText.textContent = 'Done. Click to record again.';
+  } catch (e) {
+    errorMsg.textContent = `Error: ${e.message}`;
+    statusText.textContent = 'Click to record again';
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+checkHealth();
+</script>
+</body>
+</html>

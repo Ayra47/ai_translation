@@ -1,0 +1,58 @@
+# ============================================================
+# Voice Translator Configuration
+# ============================================================
+
+# --- Language Setup ---
+# Specify 2 languages you'll speak in.
+# The app detects which one you're using and translates to the other.
+#
+# Example: speak Russian → translates to English
+#          speak English → translates to Russian
+#
+# Supported codes: ru, en, vi, zh, de, fr, es, ja, ko, ar, ...
+languages:
+  - ru   # Russian
+  - vi   # English
+  # - vi # (optional) add Vietnamese as a 3rd: first 2 are sources → 3rd is target
+
+# --- Whisper (Speech-to-Text + Language Detection) ---
+# Model size tradeoff: speed vs accuracy
+#   tiny   → fastest, least accurate (~39M params)
+#   base   → good balance (recommended for 3 languages) (~74M)
+#   small  → better accuracy, slower (~244M)
+#   medium → high accuracy, much slower (~769M)
+#   large-v3 → best accuracy, slowest (~1.5B)
+whisper_model: "base"
+whisper_device: "cpu"        # "cpu" or "cuda" (if you have GPU)
+whisper_compute_type: "int8" # "int8" (CPU), "float16" (GPU)
+
+# --- PhoWhisper (Vietnamese specialist — used ONLY when "vi" is in languages) ---
+# PhoWhisper is a Whisper model fine-tuned by VinAI specifically on Vietnamese.
+# When "vi" is in your languages list, it runs in parallel with regular Whisper
+# and wins if its avg_log_prob score is higher.
+#
+# Requires: pip install transformers torch
+#
+# Size options match Whisper sizes: tiny / base / small / medium / large
+# Recommendation: match phowhisper_size to whisper_model for balanced speed
+phowhisper_size: "base"
+use_phowhisper: true         # set false to disable (use Whisper-only for vi)
+
+# --- Ollama (Translation) ---
+ollama_model: "translategemma:latest"
+ollama_url: "http://localhost:11434"
+ollama_timeout: 60  # seconds
+
+# --- Audio Recording ---
+recording:
+  sample_rate: 16000          # Hz (Whisper expects 16000)
+  channels: 1                 # Mono
+  silence_threshold: 0.015   # Amplitude threshold to detect speech (0.0–1.0)
+                              # Increase if it triggers on background noise
+  silence_duration: 1.5       # Seconds of silence to stop recording
+  max_duration: 30            # Max recording length in seconds
+  pre_buffer_duration: 0.5    # Seconds buffered before speech starts (avoids clipping)
+
+# --- Display ---
+show_detected_language: true  # Show which language was detected
+show_transcription: true       # Show the transcribed text before translation

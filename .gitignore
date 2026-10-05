@@ -1,0 +1,8 @@
+identify/models/*
+
+
+# Python virtual environments
+**/venv/
+
+# Downloaded ML/speech models
+**/models/
